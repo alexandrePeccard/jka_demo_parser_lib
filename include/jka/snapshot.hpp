@@ -1,92 +1,76 @@
-#ifndef SNAPSHOT_HPP
-#define SNAPSHOT_HPP
-
-#include <jka/defs.h>
-#include <jka/state.h>
-#include <jka/messagebuffer.h>
-#include <jka/instruction.h>
-
+#pragma once
+#include <cstdint>
 #include <vector>
-#include <memory>
-#include <ostream>
+#include <unordered_map>
+#include <string>
+#include <sstream>
+#include "playerstate.hpp"
+#include "entitystate.hpp"
 
-DEMO_NAMESPACE_START
-
-class PlayerState;
-class VehicleState;
-class EntityState;
+namespace jka {
 
 /**
- * Snapshot (serverTime, delta, flags, areaMask, player/vehicle state, entities)
+ * Snapshot moderne — encapsule un état complet du monde
+ * (playerState, vehicleState, entities, métadonnées).
  *
- * — Déporté dans ce header pour casser les dépendances circulaires,
- *   tout en gardant l’API existante utilisée par le projet.
- * — La mémoire des states est modernisée via unique_ptr ; les getters
- *   renvoient des pointeurs bruts pour rester compatibles.
+ * Conçu comme modèle de données pur, sans logique de parsing/delta.
  */
-class Snapshot : public Instruction {
-protected:
-    int serverTime{0};
-    int deltaNum{0};
-    int flags{0};
-    std::vector<byte> areaMask;
+struct Snapshot {
+    int serverTime{0};                     ///< Temps serveur (ms)
+    int deltaNum{0};                       ///< Numéro de delta
+    int flags{0};                          ///< Flags divers
+    std::vector<std::uint8_t> areaMask;    ///< Masque des zones visibles
 
-    // Modernisation mémoire : unique_ptr (compat getters bruts)
-    std::unique_ptr<PlayerState>  playerState;
-    std::unique_ptr<PlayerState>  vehicleState;
+    PlayerState playerState;               ///< Joueur principal
+    PlayerState vehicleState;              ///< État véhicule (optionnel)
+    std::unordered_map<int, EntityState> entities; ///< Map entityNum → état
 
-    // Map d’entités (héritée de Instruction)
-    entitymap entities;
+    // --- Helpers entités -----------------------------------------------------
 
-public:
-    Snapshot() : Instruction(INSTR_SNAPSHOT) {}
-    ~Snapshot() override = default;
+    /// Retourne un pointeur vers l’entité (ou nullptr si absente)
+    EntityState* findEntity(int num) {
+        auto it = entities.find(num);
+        return (it != entities.end()) ? &it->second : nullptr;
+    }
+    const EntityState* findEntity(int num) const {
+        auto it = entities.find(num);
+        return (it != entities.end()) ? &it->second : nullptr;
+    }
 
-    // Non copiable (snapshots référencent des pointeurs/ressources)
-    Snapshot(const Snapshot&) = delete;
-    Snapshot& operator=(const Snapshot&) = delete;
+    /// Ajoute ou met à jour une entité
+    EntityState& upsertEntity(int num, const EntityState& es) {
+        return entities[num] = es;
+    }
 
-    // Clone « profond » moderne (si besoin dans tes outils)
-    std::unique_ptr<Snapshot> clone() const;
+    /// Supprime une entité
+    void removeEntity(int num) {
+        entities.erase(num);
+    }
 
-    // I/O (implémentations dans le .cpp de ton projet)
-    void Save() const override;
-    void Load() override;              // ← lit DM_26 et « ajoute » ps, veh, entities
-    void report(std::ostream& os) const override;
+    // --- Debug ---------------------------------------------------------------
 
-    // Accès
-    int  getAreamaskLen() const noexcept { return static_cast<int>(areaMask.size()); }
-    int  getAreamask(int id) const { return static_cast<int>(areaMask.at(id)); }
-    int  getDeltanum() const noexcept { return deltaNum; }
-    int  getServertime() const noexcept { return serverTime; }
-    int  getSnapflags() const noexcept { return flags; }
+    std::string toString() const {
+        std::ostringstream oss;
+        oss << "Snapshot{time=" << serverTime
+            << ", delta=" << deltaNum
+            << ", flags=" << flags
+            << ", areaMask=" << areaMask.size()
+            << ", entities=" << entities.size()
+            << "}";
+        return oss.str();
+    }
 
-    PlayerState*       getPlayerstate()       noexcept { return playerState.get(); }
-    PlayerState*       getVehiclestate()      noexcept { return vehicleState.get(); }
-    const PlayerState* getPlayerstate() const noexcept { return playerState.get(); }
-    const PlayerState* getVehiclestate()const noexcept { return vehicleState.get(); }
-
-    // Mutateurs
-    void setAreamaskLen(int value) { areaMask.resize(static_cast<size_t>(value)); }
-    void setAreamask(int id, int v) { areaMask.at(id) = static_cast<byte>(v); }
-
-    void setSnapflags(int v) noexcept { flags = v; }
-    void setDeltanum(int v) noexcept { deltaNum = v; }
-    void setServertime(int v) noexcept { serverTime = v; }
-
-    // Helpers « init » / « delta » (conservés)
-    void makeInit();          // enlève tous les 0 pour un snap non-compressé initial
-    void removeNotChanged();  // gèle les champs non modifiés (delta)
-
-    // Application de delta/coupe (conservées)
-    void applyOn(Snapshot* snap);
-    void delta(Snapshot* snap);
-
-    // Accès à la map d’entités (compat historique)
-    entitymap&       getEntities()       noexcept { return entities; }
-    const entitymap& getEntities() const noexcept { return entities; }
+    // --- Comparaisons --------------------------------------------------------
+    friend bool operator==(const Snapshot& a, const Snapshot& b) {
+        return a.serverTime == b.serverTime &&
+               a.deltaNum   == b.deltaNum &&
+               a.flags      == b.flags &&
+               a.areaMask   == b.areaMask &&
+               a.playerState == b.playerState &&
+               a.vehicleState == b.vehicleState &&
+               a.entities == b.entities;
+    }
+    friend bool operator!=(const Snapshot& a, const Snapshot& b) { return !(a==b); }
 };
 
-DEMO_NAMESPACE_END
-
-#endif // SNAPSHOT_HPP
+} // namespace jka

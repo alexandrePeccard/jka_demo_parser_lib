@@ -1,46 +1,97 @@
 #pragma once
+// playerstate_instr.hpp — Instruction qui encapsule un jka::PlayerState
+//
+// - Homogène avec EntityStateInstr.
+// - Stocke un PlayerState moderne (jka::PlayerState).
+// - Pas de parsing direct (SnapshotParser s’en charge).
+// - Support de report() pour debug.
 
 #include <memory>
-#include <iostream>
-#include "instruction.h"
-#include "state.h"   // pour PlayerState
+#include <ostream>
+
+#include "instruction.h"          // base Instruction + INSTR_SNAPSHOT
+#include "playerstate.hpp"        // jka::PlayerState moderne
+#include "playerstate_instr.h"    // jka::report(const PlayerState&) -> std::string
 
 namespace DemoJKA {
 
-/**
- * Instruction encapsulant un PlayerState dans un snapshot.
- */
 class PlayerStateInstr : public Instruction {
-private:
-    std::unique_ptr<PlayerState> playerState;
-
 public:
     PlayerStateInstr()
-        : Instruction(INSTR_SNAPSHOT), playerState(std::make_unique<PlayerState>()) {}
+        : Instruction(INSTR_SNAPSHOT)
+        , state_(std::make_unique<jka::PlayerState>()) {}
 
-    explicit PlayerStateInstr(std::unique_ptr<PlayerState> ps)
-        : Instruction(INSTR_SNAPSHOT), playerState(std::move(ps)) {}
+    explicit PlayerStateInstr(const jka::PlayerState& ps)
+        : Instruction(INSTR_SNAPSHOT)
+        , state_(std::make_unique<jka::PlayerState>(ps)) {}
 
-    // I/O
-    void Save() const override {
-        if (playerState) playerState->Save();
-    }
+    explicit PlayerStateInstr(jka::PlayerState&& ps)
+        : Instruction(INSTR_SNAPSHOT)
+        , state_(std::make_unique<jka::PlayerState>(std::move(ps))) {}
 
-    void Load() override {
-        if (playerState) playerState->Load();
-    }
+    explicit PlayerStateInstr(std::unique_ptr<jka::PlayerState> ps)
+        : Instruction(INSTR_SNAPSHOT)
+        , state_(std::move(ps)) {}
 
+    // --- I/O (no-op ici, séparation parsing/objet) --------------------------
+    void Save() const override {}
+    void Load() override {}
+
+    // --- Debug ---------------------------------------------------------------
     void report(std::ostream& os) const override {
-        os << "[PlayerStateInstr] ";
-        if (playerState) playerState->report(os);
+        os << "[PlayerStateInstr]\n";
+        if (state_) {
+            os << jka::report(*state_);
+        } else {
+            os << "  (null state)\n";
+        }
     }
 
-    // Getters
-    const PlayerState* getPlayerState() const noexcept { return playerState.get(); }
-    PlayerState* getPlayerState() noexcept { return playerState.get(); }
+    // --- Accès ---------------------------------------------------------------
+    const jka::PlayerState* state() const noexcept { return state_.get(); }
+    jka::PlayerState*       state()       noexcept { return state_.get(); }
 
-    // Setters
-    void setPlayerState(std::unique_ptr<PlayerState> ps) { playerState = std::move(ps); }
+    void setState(const jka::PlayerState& ps) {
+        ensureState();
+        *state_ = ps;
+    }
+    void setState(jka::PlayerState&& ps) {
+        ensureState();
+        *state_ = std::move(ps);
+    }
+    void setState(std::unique_ptr<jka::PlayerState> ps) {
+        state_ = std::move(ps);
+    }
+
+private:
+    void ensureState() {
+        if (!state_) state_ = std::make_unique<jka::PlayerState>();
+    }
+
+    std::unique_ptr<jka::PlayerState> state_;
 };
 
+    // --- Comparaison ---------------------------------------------------------
+    friend bool operator==(const PlayerStateInstr& a, const PlayerStateInstr& b) {
+        if (!a.state_ && !b.state_) return true;
+        if (!a.state_ || !b.state_) return false;
+        return *a.state_ == *b.state_;
+    }
+
+    friend bool operator!=(const PlayerStateInstr& a, const PlayerStateInstr& b) {
+        return !(a == b);
+    }
+
+
 } // namespace DemoJKA
+namespace std {
+    template<>
+    struct hash<DemoJKA::PlayerStateInstr> {
+        std::size_t operator()(const DemoJKA::PlayerStateInstr& instr) const noexcept {
+            if (const auto* ps = instr.getPlayerState()) {
+                return std::hash<DemoJKA::PlayerState>{}(*ps);
+            }
+            return 0;
+        }
+    };
+}

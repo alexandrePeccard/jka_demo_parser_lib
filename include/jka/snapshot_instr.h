@@ -1,90 +1,72 @@
 #pragma once
-
-#include <vector>
 #include <memory>
 #include <iostream>
-
 #include "instruction.h"
-#include "playerstate_instr.h"
-#include "entitystate_instr.h"
-#include "state.h"        // PlayerState / EntityState
-#include "messagebuffer.h"
+#include "snapshot.hpp"
+#include "snapshot_adapter.hpp"
 
 namespace DemoJKA {
 
 /**
- * Snapshot complet d’un instant de jeu.
- * Contient : 
- *  - un PlayerStateInstr
- *  - une collection d’EntityStateInstr
+ * Instruction encapsulant un Snapshot complet dans la timeline.
+ *
+ * Hérite de Instruction pour s’intégrer dans le parsing/écriture.
+ * Wrappe un jka::Snapshot moderne via unique_ptr.
  */
-class Snapshot : public Instruction {
+class SnapshotInstr : public Instruction {
 private:
-    int serverTime;
-    std::unique_ptr<PlayerStateInstr> playerStateInstr;
-    std::vector<std::unique_ptr<EntityStateInstr>> entities;
+    std::unique_ptr<jka::Snapshot> snapshot;
 
 public:
-    Snapshot() 
-        : Instruction(INSTR_SNAPSHOT), serverTime(0),
-          playerStateInstr(std::make_unique<PlayerStateInstr>()) {}
+    SnapshotInstr()
+        : Instruction(INSTR_SNAPSHOT), snapshot(std::make_unique<jka::Snapshot>()) {}
 
-    explicit Snapshot(int stime) 
-        : Instruction(INSTR_SNAPSHOT), serverTime(stime),
-          playerStateInstr(std::make_unique<PlayerStateInstr>()) {}
+    explicit SnapshotInstr(std::unique_ptr<jka::Snapshot> snap)
+        : Instruction(INSTR_SNAPSHOT), snapshot(std::move(snap)) {}
 
-    // I/O
-    void Save() const override {
-        if (playerStateInstr) playerStateInstr->Save();
-        for (const auto& ent : entities) {
-            if (ent) ent->Save();
-        }
+    // Clone profond
+    std::unique_ptr<SnapshotInstr> clone() const {
+        return std::make_unique<SnapshotInstr>(
+            std::make_unique<jka::Snapshot>(*snapshot)
+        );
     }
 
+    // I/O (à implémenter côté parsing DM_26)
+    void Save() const override {
+        // TODO: encoder snapshot->playerState, entities, etc.
+    }
     void Load() override {
-        // On suppose qu’un MessageBuffer global est actif
-        MessageBuffer& buf = MessageBuffer::getGlobal();
-
-        serverTime = buf.readInt();
-
-        // PlayerState
-        playerStateInstr = std::make_unique<PlayerStateInstr>();
-        playerStateInstr->Load();
-
-        // Entities
-        entities.clear();
-        int numEntities = buf.readInt();
-        for (int i = 0; i < numEntities; i++) {
-            auto instr = std::make_unique<EntityStateInstr>();
-            instr->Load();
-            entities.push_back(std::move(instr));
-        }
+        // TODO: remplir snapshot depuis un flux DM_26
     }
 
     void report(std::ostream& os) const override {
-        os << "[Snapshot] serverTime=" << serverTime 
-           << " entities=" << entities.size() << "\n";
-        if (playerStateInstr) {
-            os << "   ";
-            playerStateInstr->report(os);
-            os << "\n";
-        }
-        for (const auto& ent : entities) {
-            os << "   ";
-            if (ent) ent->report(os);
-            os << "\n";
-        }
+        os << "[SnapshotInstr] " << snapshot->toString();
     }
 
-    // Getters
-    int getServerTime() const noexcept { return serverTime; }
-    const PlayerStateInstr* getPlayerStateInstr() const noexcept { return playerStateInstr.get(); }
-    const std::vector<std::unique_ptr<EntityStateInstr>>& getEntities() const noexcept { return entities; }
+    // Accès direct au snapshot moderne
+    jka::Snapshot*       getSnapshot()       noexcept { return snapshot.get(); }
+    const jka::Snapshot* getSnapshot() const noexcept { return snapshot.get(); }
 
-    // Mutators
-    void setServerTime(int t) noexcept { serverTime = t; }
-    void setPlayerStateInstr(std::unique_ptr<PlayerStateInstr> ps) { playerStateInstr = std::move(ps); }
-    void addEntityInstr(std::unique_ptr<EntityStateInstr> es) { entities.push_back(std::move(es)); }
+    // Wrappers compatibles avec l’API historique
+    int getServertime() const noexcept { return snapshot->serverTime; }
+    int getDeltanum()   const noexcept { return snapshot->deltaNum; }
+    int getFlags()      const noexcept { return snapshot->flags; }
+
+    jka::PlayerState* getPlayerState()       noexcept { return &snapshot->playerState; }
+    jka::PlayerState* getVehicleState()      noexcept { return &snapshot->vehicleState; }
+    const jka::PlayerState* getPlayerState() const noexcept { return &snapshot->playerState; }
+    const jka::PlayerState* getVehicleState()const noexcept { return &snapshot->vehicleState; }
+
+    auto&       getEntities()       noexcept { return snapshot->entities; }
+    const auto& getEntities() const noexcept { return snapshot->entities; }
+
+    // Delta application
+    void applyOn(const SnapshotInstr& base) {
+        *snapshot = jka::applyDelta(*base.snapshot, *snapshot);
+    }
+    void removeNotChanged(const SnapshotInstr& ref) {
+        jka::removeNotChanged(*snapshot, *ref.snapshot);
+    }
 };
 
 } // namespace DemoJKA
