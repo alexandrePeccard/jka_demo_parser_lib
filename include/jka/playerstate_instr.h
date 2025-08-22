@@ -11,9 +11,9 @@
 
 #include "instruction.h"          // base Instruction + INSTR_SNAPSHOT
 #include "playerstate.hpp"        // jka::PlayerState moderne
-#include "playerstate_instr.h"    // jka::report(const PlayerState&) -> std::string
+#include "playerstate_instr.hpp"    // jka::report(const PlayerState&) -> std::string
 
-namespace DemoJKA {
+namespace jka {
 
 class PlayerStateInstr : public Instruction {
 public:
@@ -82,8 +82,8 @@ private:
         return !(a == b);
     }
 
+}
 
-} // namespace DemoJKA
 namespace std {
     template<>
     struct hash<DemoJKA::PlayerStateInstr> {

@@ -6,7 +6,7 @@
 #include <algorithm>
 #include "Vec3.hpp"
 #include "trajectory_types.hpp"
-
+#include "TrajectoryEvaluator.hpp"
 namespace jka {
 
 // ---- Types de base ---------------------------------------------------------
@@ -76,49 +76,49 @@ constexpr inline int toLegacyEnum(TrajectoryType t) {
         case TrajectoryType::Gravity:      return 6;
     }
     return 0;
+
 }
+
 
 // ---- Adaptateurs ⇆ C (q_shared.h) ------------------------------------------
 
-#ifdef JKA_HAVE_Q_SHARED_H
-    extern "C" {
-      #include "q_shared.h"  // doit fournir trType_t, trajectory_t, vec3_t
-    }
+    #ifdef JKA_HAVE_Q_SHARED_H
+        extern "C" {
+          #include "q_shared.h"  // doit fournir trType_t, trajectory_t, vec3_t
+        }
 
-    inline Trajectory fromLegacy(const trajectory_t& in) {
-        Trajectory out;
-        out.type      = toModernEnum(static_cast<int>(in.trType));
-        out.startTime = in.trTime;
-        out.duration  = in.trDuration;
-        out.base      = Vec3{ in.trBase[0],  in.trBase[1],  in.trBase[2]  };
-        out.delta     = Vec3{ in.trDelta[0], in.trDelta[1], in.trDelta[2] };
-        return out;
-    }
+        inline Trajectory fromLegacy(const trajectory_t& in) {
+            Trajectory out;
+            out.type      = toModernEnum(static_cast<int>(in.trType));
+            out.startTime = in.trTime;
+            out.duration  = in.trDuration;
+            out.base      = Vec3{ in.trBase[0],  in.trBase[1],  in.trBase[2]  };
+            out.delta     = Vec3{ in.trDelta[0], in.trDelta[1], in.trDelta[2] };
+            return out;
+        }
 
-    inline trajectory_t toLegacy(const Trajectory& in) {
-        trajectory_t out{};
-        out.trType     = static_cast<trType_t>(toLegacyEnum(in.type));
-        out.trTime     = in.startTime;
-        out.trDuration = in.duration;
-        out.trBase[0]  = in.base.x;  out.trBase[1]  = in.base.y;  out.trBase[2]  = in.base.z;
-        out.trDelta[0] = in.delta.x; out.trDelta[1] = in.delta.y; out.trDelta[2] = in.delta.z;
-        return out;
-    }
+        inline trajectory_t toLegacy(const Trajectory& in) {
+            trajectory_t out{};
+            out.trType     = static_cast<trType_t>(toLegacyEnum(in.type));
+            out.trTime     = in.startTime;
+            out.trDuration = in.duration;
+            out.trBase[0]  = in.base.x;  out.trBase[1]  = in.base.y;  out.trBase[2]  = in.base.z;
+            out.trDelta[0] = in.delta.x; out.trDelta[1] = in.delta.y; out.trDelta[2] = in.delta.z;
+            return out;
+        }
     #endif // JKA_HAVE_Q_SHARED_H
 
-} // namespace jka
 
-// Implémentations inline des wrappers pratiques
-#include "TrajectoryEvaluator.hpp"
 
-namespace jka {
+
     inline Vec3 Trajectory::positionAt(MilliSeconds t, float gravity) const {
         return EvaluateTrajectory(*this, t, gravity);
     }
     inline Vec3 Trajectory::velocityAt(MilliSeconds t, float gravity) const {
         return EvaluateTrajectoryDelta(*this, t, gravity);
     }
-} // namespace jka
+}
+
 namespace std {
     template<>
     struct hash<jka::Trajectory> {
