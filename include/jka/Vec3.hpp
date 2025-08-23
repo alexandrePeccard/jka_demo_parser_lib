@@ -154,6 +154,11 @@ namespace jka {
   using Vec3  = Vec3T<float>;
   using Vec3i = Vec3T<std::int32_t>;
 
+
+inline Vec3 toFloat() const { 
+    return Vec3{static_cast<float>(x), static_cast<float>(y), static_cast<float>(z)}; 
+}
+
   // ---- IO Streams (debug) -----------------------------------------------------
   template <class T>
   inline std::ostream& operator<<(std::ostream& os, const Vec3T<T>& v) {

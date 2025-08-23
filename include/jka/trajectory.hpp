@@ -6,8 +6,10 @@
 #include <algorithm>
 #include "Vec3.hpp"
 #include "trajectory_types.hpp"
-#include "TrajectoryEvaluator.hpp"
+
 namespace jka {
+    Vec3 EvaluateTrajectory(const Trajectory& tr, MilliSeconds atTime, float gravity);
+    Vec3 EvaluateTrajectoryDelta(const Trajectory& tr, MilliSeconds atTime, float gravity);
 
 // ---- Types de base ---------------------------------------------------------
 

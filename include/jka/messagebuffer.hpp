@@ -125,4 +125,4 @@ namespace jka {
         // const_cast because huffReceive needs mutable buffer pointer
         const_cast<MessageBuffer&>(msg).huffReceive(stream, output, length, offset);
     }
-} // namespace DemoJKA
+}
